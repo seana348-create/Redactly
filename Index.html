@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Redactly — Automatic PDF Redaction</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg: #080b12;
+  --bg2: #0d1120;
+  --surface: rgba(255,255,255,0.04);
+  --surface2: rgba(255,255,255,0.07);
+  --border: rgba(255,255,255,0.08);
+  --border2: rgba(255,255,255,0.14);
+  --text: #e8eaf0;
+  --muted: #606880;
+  --muted2: #8892a8;
+  --accent: #ff3b5c;
+  --accent2: #ff6b35;
+  --accent-glow: rgba(255,59,92,0.25);
+  --accent-subtle: rgba(255,59,92,0.08);
+  --green: #00d68f;
+  --blue: #4d9fff;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Syne', sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);overflow-x:hidden;cursor:none;}
+
+.cursor{width:8px;height:8px;background:var(--accent);border-radius:50%;position:fixed;pointer-events:none;z-index:9999;transition:transform .15s ease;}
+.cursor-ring{width:32px;height:32px;border:1.5px solid rgba(255,59,92,0.4);border-radius:50%;position:fixed;pointer-events:none;z-index:9998;transition:all .12s ease;}
+
+body::before{content:'';position:fixed;inset:0;z-index:1;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");opacity:0.022;pointer-events:none;}
+
+.orb{position:fixed;border-radius:50%;filter:blur(100px);pointer-events:none;z-index:0;opacity:.35;}
+.orb-1{width:600px;height:600px;background:radial-gradient(circle,#ff3b5c 0%,transparent 70%);top:-200px;right:-100px;animation:drift1 18s ease-in-out infinite;}
+.orb-2{width:500px;height:500px;background:radial-gradient(circle,#1a2fff 0%,transparent 70%);bottom:20%;left:-150px;animation:drift2 22s ease-in-out infinite;opacity:.2;}
+.orb-3{width:300px;height:300px;background:radial-gradient(circle,#ff6b35 0%,transparent 70%);bottom:-100px;right:25%;animation:drift3 16s ease-in-out infinite;opacity:.2;}
+@keyframes drift1{0%,100%{transform:translate(0,0)}33%{transform:translate(-40px,60px)}66%{transform:translate(30px,-40px)}}
+@keyframes drift2{0%,100%{transform:translate(0,0)}50%{transform:translate(60px,-40px)}}
+@keyframes drift3{0%,100%{transform:translate(0,0)}50%{transform:translate(-30px,50px)}}
+
+nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:0 48px;height:64px;display:flex;align-items:center;justify-content:space-between;background:rgba(8,11,18,0.7);backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid var(--border);}
+.nav-logo{font-size:18px;font-weight:800;color:var(--text);text-decoration:none;letter-spacing:-.02em;display:flex;align-items:center;gap:8px;}
+.logo-icon{width:28px;height:28px;background:var(--accent);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;}
+.nav-links{display:flex;gap:4px;list-style:none;}
+.nav-links a{text-decoration:none;color:var(--muted2);font-size:13px;font-weight:500;padding:6px 14px;border-radius:6px;transition:all .2s;}
+.nav-links a:hover{color:var(--text);background:var(--surface2);}
+.nav-right{display:flex;gap:10px;align-items:center;}
+.btn-ghost{padding:8px 18px;border-radius:8px;border:1px solid var(--border2);background:transparent;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans);text-decoration:none;transition:all .2s;}
+.btn-ghost:hover{background:var(--surface2);}
+.btn-nav{padding:8px 18px;border-radius:8px;border:none;background:var(--accent);color:white;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sans);text-decoration:none;transition:all .2s;box-shadow:0 0 20px var(--accent-glow);}
+.btn-nav:hover{transform:translateY(-1px);box-shadow:0 0 30px var(--accent-glow);}
+
+.hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:120px 48px 80px;text-align:center;position:relative;z-index:2;}
+.hero-eyebrow{display:inline-flex;align-items:center;gap:8px;background:var(--accent-subtle);border:1px solid rgba(255,59,92,0.2);padding:5px 14px;border-radius:100px;font-size:11px;font-weight:600;color:var(--accent);letter-spacing:.1em;text-transform:uppercase;font-family:var(--mono);margin-bottom:36px;animation:fadeUp .8s ease both;}
+.live-dot{width:6px;height:6px;background:var(--accent);border-radius:50%;animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.8)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+
+.hero h1{font-size:clamp(52px,8vw,108px);font-weight:800;line-height:.95;letter-spacing:-.04em;color:var(--text);max-width:1000px;margin-bottom:28px;animation:fadeUp .8s .1s ease both;}
+.word-redact{position:relative;display:inline-block;color:transparent;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;}
+.word-redact::after{content:'';position:absolute;bottom:4px;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px;}
+.hero-sub{font-size:17px;color:var(--muted2);max-width:480px;line-height:1.7;margin-bottom:48px;font-weight:400;animation:fadeUp .8s .2s ease both;}
+.hero-actions{display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap;animation:fadeUp .8s .3s ease both;}
+.btn-primary{padding:14px 32px;border-radius:10px;border:none;background:var(--accent);color:white;font-size:15px;font-weight:700;font-family:var(--sans);cursor:pointer;text-decoration:none;transition:all .2s;box-shadow:0 0 40px var(--accent-glow),inset 0 1px 0 rgba(255,255,255,.15);display:inline-flex;align-items:center;gap:8px;}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 0 60px var(--accent-glow),inset 0 1px 0 rgba(255,255,255,.15);}
+.btn-outline{padding:14px 32px;border-radius:10px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:15px;font-weight:600;font-family:var(--sans);cursor:pointer;text-decoration:none;transition:all .2s;backdrop-filter:blur(10px);display:inline-flex;align-items:center;gap:8px;}
+.btn-outline:hover{background:var(--surface2);border-color:rgba(255,255,255,.2);}
+.trust-row{display:flex;gap:24px;align-items:center;justify-content:center;margin-top:64px;flex-wrap:wrap;animation:fadeUp .8s .4s ease both;}
+.trust-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);font-family:var(--mono);}
+.trust-item span{color:var(--green);}
+.trust-sep{width:1px;height:16px;background:var(--border);}
+
+.demo-float{position:relative;z-index:2;padding:0 48px 100px;display:flex;justify-content:center;}
+.demo-card{width:100%;max-width:860px;background:var(--surface);border:1px solid var(--border2);border-radius:20px;overflow:hidden;backdrop-filter:blur(20px);box-shadow:0 40px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.05) inset;}
+.demo-topbar{background:rgba(255,255,255,.03);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;gap:12px;}
+.demo-dots{display:flex;gap:6px;}
+.demo-dot{width:10px;height:10px;border-radius:50%;}
+.demo-dot:nth-child(1){background:#ff5f57;}
+.demo-dot:nth-child(2){background:#febc2e;}
+.demo-dot:nth-child(3){background:#28c840;}
+.demo-title{font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:8px;}
+.demo-badge{margin-left:auto;padding:3px 10px;border-radius:100px;background:rgba(0,214,143,.1);border:1px solid rgba(0,214,143,.2);font-size:10px;font-family:var(--mono);color:var(--green);font-weight:500;}
+.demo-body{padding:28px 32px;font-family:var(--mono);font-size:13px;line-height:2.2;}
+.doc-line{display:flex;align-items:center;gap:8px;}
+.doc-key{color:var(--muted2);min-width:140px;}
+.doc-val{color:var(--text);}
+.rb{display:inline-flex;align-items:center;background:var(--accent);border-radius:4px;padding:1px 6px;color:transparent;font-size:11px;user-select:none;position:relative;overflow:hidden;}
+.rb::after{content:'REDACTED';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.5);}
+.rb.blue{background:rgba(77,159,255,.7);}
+.rb.orange{background:rgba(255,107,53,.8);}
+.rb.green{background:rgba(0,214,143,.6);}
+.demo-stats{display:flex;gap:0;border-top:1px solid var(--border);}
+.ds{flex:1;padding:16px 24px;border-right:1px solid var(--border);}
+.ds:last-child{border-right:none;}
+.ds-val{font-size:22px;font-weight:800;color:var(--text);}
+.ds-key{font-size:10px;color:var(--muted);font-family:var(--mono);margin-top:2px;}
+
+.features{position:relative;z-index:2;padding:100px 48px;max-width:1200px;margin:0 auto;}
+.section-eyebrow{font-family:var(--mono);font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:.12em;font-weight:500;margin-bottom:16px;}
+.section-title{font-size:clamp(32px,4vw,52px);font-weight:800;letter-spacing:-.03em;color:var(--text);max-width:560px;line-height:1.1;margin-bottom:64px;}
+.features-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:20px;overflow:hidden;}
+.feat-card{background:var(--bg2);padding:40px 36px;transition:background .25s;position:relative;overflow:hidden;}
+.feat-card::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,var(--accent-subtle) 0%,transparent 60%);opacity:0;transition:opacity .25s;}
+.feat-card:hover{background:#111827;}
+.feat-card:hover::before{opacity:1;}
+.feat-icon{width:44px;height:44px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:20px;position:relative;z-index:1;}
+.feat-card h3{font-size:17px;font-weight:700;color:var(--text);margin-bottom:10px;letter-spacing:-.02em;position:relative;z-index:1;}
+.feat-card p{font-size:13.5px;color:var(--muted2);line-height:1.7;position:relative;z-index:1;}
+
+.steps-section{position:relative;z-index:2;padding:100px 48px;background:linear-gradient(180deg,transparent 0%,rgba(255,59,92,.03) 50%,transparent 100%);}
+.steps-inner{max-width:1100px;margin:0 auto;}
+.steps-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:32px;margin-top:64px;position:relative;}
+.steps-grid::before{content:'';position:absolute;top:28px;left:10%;right:10%;height:1px;background:linear-gradient(90deg,transparent,var(--border2),transparent);}
+.step-card{text-align:center;position:relative;}
+.step-num-wrap{width:56px;height:56px;border-radius:14px;background:var(--surface);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;margin:0 auto 24px;font-family:var(--mono);font-size:13px;font-weight:500;color:var(--accent);position:relative;z-index:1;backdrop-filter:blur(10px);}
+.step-card h3{font-size:15px;font-weight:700;color:var(--text);margin-bottom:8px;}
+.step-card p{font-size:13px;color:var(--muted2);line-height:1.65;}
+
+.pricing{position:relative;z-index:2;padding:100px 48px;max-width:1100px;margin:0 auto;}
+.pricing-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:64px;}
+.price-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:36px;backdrop-filter:blur(10px);transition:border-color .2s,transform .2s;position:relative;overflow:hidden;}
+.price-card:hover{border-color:var(--border2);transform:translateY(-4px);}
+.price-card.featured{border-color:rgba(255,59,92,.4);background:linear-gradient(135deg,rgba(255,59,92,.08) 0%,rgba(255,107,53,.05) 100%);}
+.price-card.featured::before{content:'Most Popular';position:absolute;top:20px;right:20px;font-size:10px;font-weight:700;font-family:var(--mono);color:var(--accent);letter-spacing:.08em;text-transform:uppercase;background:var(--accent-subtle);border:1px solid rgba(255,59,92,.2);padding:3px 10px;border-radius:100px;}
+.price-tier{font-family:var(--mono);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:24px;}
+.price-amount{font-size:52px;font-weight:800;letter-spacing:-.04em;color:var(--text);line-height:1;}
+.price-amount sup{font-size:24px;vertical-align:super;margin-right:2px;opacity:.6;}
+.price-period{font-size:13px;color:var(--muted);margin-top:6px;margin-bottom:28px;font-family:var(--mono);}
+.price-divider{height:1px;background:var(--border);margin-bottom:24px;}
+.price-feats{list-style:none;margin-bottom:32px;}
+.price-feats li{display:flex;align-items:flex-start;gap:10px;font-size:13.5px;color:var(--muted2);padding:7px 0;}
+.price-feats li .ck{color:var(--green);flex-shrink:0;font-size:12px;margin-top:2px;}
+.price-feats li .ds{color:var(--muted);flex-shrink:0;}
+.btn-price{width:100%;padding:13px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sans);transition:all .2s;text-decoration:none;display:block;text-align:center;border:1px solid var(--border2);background:var(--surface2);color:var(--text);}
+.btn-price:hover{background:rgba(255,255,255,.1);}
+.price-card.featured .btn-price{background:var(--accent);border-color:transparent;color:white;box-shadow:0 0 30px var(--accent-glow);}
+.price-card.featured .btn-price:hover{box-shadow:0 0 50px var(--accent-glow);}
+
+#app-section{display:none;position:relative;z-index:2;padding:80px 48px 100px;background:linear-gradient(180deg,rgba(255,59,92,.04) 0%,transparent 40%);}
+#app-section.visible{display:block;}
+.app-topbar{max-width:1180px;margin:0 auto 40px;display:flex;align-items:center;justify-content:space-between;}
+.app-topbar-left h2{font-size:32px;font-weight:800;letter-spacing:-.03em;color:var(--text);}
+.app-topbar-left p{font-size:13px;color:var(--muted);margin-top:4px;font-family:var(--mono);}
+.btn-back{padding:9px 18px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font-size:13px;font-weight:600;color:var(--muted2);cursor:pointer;font-family:var(--sans);transition:all .2s;backdrop-filter:blur(10px);}
+.btn-back:hover{color:var(--text);border-color:var(--border2);}
+.app-grid{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:300px 1fr;gap:16px;}
+.sidebar{display:flex;flex-direction:column;gap:12px;position:sticky;top:80px;height:fit-content;}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:22px;backdrop-filter:blur(20px);}
+.panel-label{font-family:var(--mono);font-size:10px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:14px;}
+.drop-zone{border:1.5px dashed var(--border2);border-radius:12px;padding:28px 16px;text-align:center;cursor:pointer;transition:all .2s;background:transparent;}
+.drop-zone:hover,.drop-zone.active{border-color:var(--accent);background:var(--accent-subtle);}
+.drop-zone .dz-icon{font-size:28px;margin-bottom:10px;}
+.drop-zone p{font-size:12px;color:var(--muted);line-height:1.6;}
+.drop-zone strong{color:var(--text);}
+#file-input{display:none;}
+.file-list{margin-top:10px;display:flex;flex-direction:column;gap:6px;}
+.file-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);font-size:12px;}
+.file-name{color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);}
+.file-rm{color:var(--muted);cursor:pointer;transition:color .15s;font-size:14px;}
+.file-rm:hover{color:var(--accent);}
+.kw-input{width:100%;padding:10px 12px;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;color:var(--text);font-family:var(--mono);font-size:12px;resize:vertical;min-height:76px;transition:border-color .2s;}
+.kw-input:focus{outline:none;border-color:var(--accent);}
+.kw-input::placeholder{color:var(--muted);}
+.hint{font-size:11px;color:var(--muted);margin-top:6px;font-family:var(--mono);}
+.pill-wrap{display:flex;flex-wrap:wrap;gap:6px;}
+.pill{padding:4px 11px;border-radius:100px;border:1px solid var(--border2);background:transparent;color:var(--muted2);font-size:10px;font-weight:600;cursor:pointer;font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em;transition:all .15s;}
+.pill:hover{border-color:var(--accent);color:var(--accent);}
+.pill.on{background:rgba(255,59,92,.15);border-color:rgba(255,59,92,.4);color:var(--accent);}
+.opt-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0;}
+.opt-lbl{font-size:12.5px;color:var(--muted2);}
+.tog{width:34px;height:18px;border-radius:100px;background:var(--surface2);border:1px solid var(--border2);cursor:pointer;position:relative;transition:all .2s;}
+.tog.on{background:var(--accent);border-color:var(--accent);}
+.tog::after{content:'';position:absolute;width:12px;height:12px;border-radius:50%;background:white;top:2px;left:2px;transition:left .2s;}
+.tog.on::after{left:18px;}
+.scan-btn{width:100%;padding:13px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--accent),var(--accent2));color:white;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sans);box-shadow:0 0 30px var(--accent-glow);transition:all .2s;}
+.scan-btn:hover{transform:translateY(-1px);box-shadow:0 0 50px var(--accent-glow);}
+.scan-btn:disabled{background:var(--surface2);color:var(--muted);box-shadow:none;transform:none;cursor:not-allowed;}
+.main-pane{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:32px;backdrop-filter:blur(20px);min-height:500px;}
+.empty-state{height:100%;min-height:420px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--muted);}
+.empty-icon{font-size:44px;margin-bottom:18px;opacity:.3;}
+.empty-state h3{font-size:20px;font-weight:700;color:var(--muted2);margin-bottom:8px;}
+.empty-state p{font-size:13px;line-height:1.6;}
+.results-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
+.results-h{font-size:20px;font-weight:800;letter-spacing:-.02em;}
+.count-badge{padding:4px 14px;border-radius:100px;background:rgba(255,59,92,.15);border:1px solid rgba(255,59,92,.3);font-size:12px;font-weight:700;color:var(--accent);font-family:var(--mono);}
+.sel-row{display:flex;gap:8px;margin-bottom:16px;}
+.sel-btn{padding:5px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);font-size:11px;color:var(--muted2);cursor:pointer;font-family:var(--sans);font-weight:600;transition:all .15s;}
+.sel-btn:hover{color:var(--text);border-color:var(--border2);}
+.match-list{display:flex;flex-direction:column;gap:6px;max-height:55vh;overflow-y:auto;}
+.match-list::-webkit-scrollbar{width:4px;}
+.match-list::-webkit-scrollbar-track{background:transparent;}
+.match-list::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.match-row{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:10px;background:var(--bg2);border:1px solid var(--border);transition:border-color .15s;}
+.match-row:hover{border-color:var(--border2);}
+.match-cb{width:18px;height:18px;border-radius:5px;border:1.5px solid var(--border2);cursor:pointer;background:transparent;transition:all .15s;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;color:white;}
+.match-cb.on{background:var(--accent);border-color:var(--accent);}
+.m-badge{padding:2px 9px;border-radius:100px;font-size:9px;font-weight:700;font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em;flex-shrink:0;}
+.m-text{font-family:var(--mono);font-size:12px;color:var(--text);flex:1;word-break:break-all;}
+.m-page{font-size:11px;color:var(--muted);font-family:var(--mono);white-space:nowrap;}
+.dl-bar{margin-top:20px;border-radius:14px;background:linear-gradient(135deg,rgba(255,59,92,.1) 0%,rgba(255,107,53,.07) 100%);border:1px solid rgba(255,59,92,.2);padding:22px 26px;display:flex;align-items:center;justify-content:space-between;gap:20px;}
+.dl-info h3{font-size:17px;font-weight:700;color:var(--text);margin-bottom:4px;}
+.dl-info p{font-size:12px;color:var(--muted);font-family:var(--mono);}
+.dl-btn{padding:12px 26px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--accent),var(--accent2));color:white;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sans);white-space:nowrap;transition:all .2s;box-shadow:0 0 20px var(--accent-glow);}
+.dl-btn:hover{transform:translateY(-1px);box-shadow:0 0 40px var(--accent-glow);}
+
+footer{position:relative;z-index:2;background:var(--bg2);border-top:1px solid var(--border);padding:60px 48px 40px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:48px;}
+.footer-brand .logo{font-size:20px;font-weight:800;color:var(--text);margin-bottom:10px;}
+.footer-brand p{font-size:13px;color:var(--muted);line-height:1.6;max-width:240px;}
+.footer-col h4{font-size:12px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px;font-family:var(--mono);}
+.footer-col a{display:block;font-size:13px;color:var(--muted);text-decoration:none;margin-bottom:10px;transition:color .15s;}
+.footer-col a:hover{color:var(--text);}
+.footer-bottom{position:relative;z-index:2;background:var(--bg2);border-top:1px solid var(--border);padding:20px 48px;display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--muted);font-family:var(--mono);}
+
+.toast{position:fixed;bottom:28px;right:28px;z-index:999;background:var(--surface2);border:1px solid var(--border2);backdrop-filter:blur(20px);padding:13px 20px;border-radius:12px;font-size:13px;font-weight:500;color:var(--text);box-shadow:0 20px 40px rgba(0,0,0,.4);transform:translateY(20px);opacity:0;transition:all .3s;}
+.toast.show{transform:translateY(0);opacity:1;}
+.toast.success{border-color:rgba(0,214,143,.3);}
+.toast.error{border-color:rgba(255,59,92,.3);}
+
+@media(max-width:900px){
+  nav{padding:0 20px;} .nav-links{display:none;}
+  .hero{padding:100px 24px 60px;}
+  .demo-float{padding:0 24px 60px;}
+  .features{padding:60px 24px;} .features-grid{grid-template-columns:1fr;}
+  .steps-grid{grid-template-columns:1fr 1fr;}
+  .pricing{padding:60px 24px;} .pricing-grid{grid-template-columns:1fr;}
+  .app-grid{grid-template-columns:1fr;} .sidebar{position:static;}
+  #app-section{padding:60px 20px;}
+  footer{grid-template-columns:1fr;gap:32px;padding:40px 24px;}
+  .footer-bottom{padding:20px 24px;flex-direction:column;gap:8px;}
+}
+</style>
+</head>
+<body>
+
+<div class="cursor" id="cursor"></div>
+<div class="cursor-ring" id="cursor-ring"></div>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+
+<!-- NAV -->
+<nav>
+  <a href="#" class="nav-logo"><div class="logo-icon">⬛</div>Redactly</a>
+  <ul class="nav-links">
+    <li><a href="#features">Features</a></li>
+    <li><a href="#how">How it works</a></li>
+    <li><a href="#pricing">Pricing</a></li>
+  </ul>
+  <div class="nav-right">
+    <a href="#" class="btn-ghost">Sign in</a>
+    <a href="#" class="btn-nav" onclick="openApp(event)">Get started →</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-eyebrow"><div class="live-dot"></div>Automatic PDF Redaction</div>
+  <h1>Redact sensitive data<br/><span class="word-redact">permanently.</span></h1>
+  <p class="hero-sub">Upload, detect, and erase private information across hundreds of PDFs in seconds. Keywords, SSNs, emails, phone numbers — gone for good.</p>
+  <div class="hero-actions">
+    <a href="#" class="btn-primary" onclick="openApp(event)">Start redacting free <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+    <a href="#how" class="btn-outline">See how it works</a>
+  </div>
+  <div class="trust-row">
+    <div class="trust-item"><span>✓</span> No file uploads</div>
+    <div class="trust-sep"></div>
+    <div class="trust-item"><span>✓</span> 100% browser-side</div>
+    <div class="trust-sep"></div>
+    <div class="trust-item"><span>✓</span> Permanent redaction</div>
+    <div class="trust-sep"></div>
+    <div class="trust-item"><span>✓</span> Free to start</div>
+  </div>
+</section>
+
+<!-- DEMO -->
+<div class="demo-float">
+  <div class="demo-card">
+    <div class="demo-topbar">
+      <div class="demo-dots"><div class="demo-dot"></div><div class="demo-dot"></div><div class="demo-dot"></div></div>
+      <div class="demo-title">patient_record_2024.pdf — Redactly</div>
+      <div class="demo-badge">✓ 9 matches redacted</div>
+    </div>
+    <div class="demo-body">
+      <div class="doc-line"><span class="doc-key">Patient Name:</span><span class="doc-val"><span class="rb" style="width:140px">&nbsp;</span></span></div>
+      <div class="doc-line"><span class="doc-key">Date of Birth:</span><span class="doc-val"><span class="rb orange" style="width:96px">&nbsp;</span></span></div>
+      <div class="doc-line"><span class="doc-key">SSN:</span><span class="doc-val"><span class="rb" style="width:110px">&nbsp;</span></span></div>
+      <div class="doc-line"><span class="doc-key">Phone:</span><span class="doc-val"><span class="rb blue" style="width:128px">&nbsp;</span></span></div>
+      <div class="doc-line"><span class="doc-key">Email:</span><span class="doc-val"><span class="rb orange" style="width:158px">&nbsp;</span></span></div>
+      <div class="doc-line"><span class="doc-key">Address:</span><span class="doc-val">1842 Newport Blvd, Costa Mesa, CA 92627</span></div>
+      <div class="doc-line"><span class="doc-key">Credit Card:</span><span class="doc-val"><span class="rb" style="width:170px">&nbsp;</span></span></div>
+      <div class="doc-line"><span class="doc-key">Diagnosis:</span><span class="doc-val">Mild hypertension, follow-up scheduled.</span></div>
+      <div class="doc-line"><span class="doc-key">Physician:</span><span class="doc-val"><span class="rb green" style="width:120px">&nbsp;</span></span></div>
+    </div>
+    <div class="demo-stats">
+      <div class="ds"><div class="ds-val">9</div><div class="ds-key">MATCHES FOUND</div></div>
+      <div class="ds"><div class="ds-val">4</div><div class="ds-key">PATTERN TYPES</div></div>
+      <div class="ds"><div class="ds-val">0.3s</div><div class="ds-key">SCAN TIME</div></div>
+      <div class="ds"><div class="ds-val">100%</div><div class="ds-key">LOCAL ONLY</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- FEATURES -->
+<section class="features" id="features">
+  <div class="section-eyebrow">// Capabilities</div>
+  <h2 class="section-title">Built for teams who can't afford mistakes.</h2>
+  <div class="features-grid">
+    <div class="feat-card"><div class="feat-icon">🔍</div><h3>Keyword Search</h3><p>Enter names, codes, or phrases. Every instance across all pages and files is found and flagged — case-sensitive or not.</p></div>
+    <div class="feat-card"><div class="feat-icon">🧠</div><h3>Pattern Detection</h3><p>Auto-detect SSNs, phone numbers, emails, credit cards, IPs, dates of birth, and ZIP codes with battle-tested regex.</p></div>
+    <div class="feat-card"><div class="feat-icon">📂</div><h3>Batch Processing</h3><p>Drop 50+ PDFs at once. Apply the same rules to all simultaneously. Download a ZIP of all redacted outputs.</p></div>
+    <div class="feat-card"><div class="feat-icon">👁</div><h3>Preview & Control</h3><p>See every match before a single redaction is applied. Deselect false positives individually. Full control.</p></div>
+    <div class="feat-card"><div class="feat-icon">🔒</div><h3>Zero Data Exposure</h3><p>Files never leave your device. No server uploads, no AI, no cloud. Processing is 100% local in your browser.</p></div>
+    <div class="feat-card"><div class="feat-icon">⬛</div><h3>Permanent Redaction</h3><p>Text is destroyed and replaced with solid black bars. Not hidden, not masked — permanently gone from the output.</p></div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="steps-section" id="how">
+  <div class="steps-inner">
+    <div class="section-eyebrow">// How it works</div>
+    <h2 class="section-title">From upload to redacted PDF in under a minute.</h2>
+    <div class="steps-grid">
+      <div class="step-card"><div class="step-num-wrap">01</div><h3>Upload PDFs</h3><p>Drag and drop one or many PDFs. No limits on file count with Pro.</p></div>
+      <div class="step-card"><div class="step-num-wrap">02</div><h3>Set your rules</h3><p>Add custom keywords and toggle auto-detect patterns like SSN or email.</p></div>
+      <div class="step-card"><div class="step-num-wrap">03</div><h3>Preview matches</h3><p>Review every found match by page. Uncheck false positives before proceeding.</p></div>
+      <div class="step-card"><div class="step-num-wrap">04</div><h3>Download</h3><p>Apply and instantly download permanently redacted PDFs.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="pricing" id="pricing">
+  <div class="section-eyebrow">// Pricing</div>
+  <h2 class="section-title">Simple, transparent pricing.</h2>
+  <div class="pricing-grid">
+    <div class="price-card">
+      <div class="price-tier">Starter</div>
+      <div class="price-amount"><sup>$</sup>0</div>
+      <div class="price-period">forever free</div>
+      <div class="price-divider"></div>
+      <ul class="price-feats">
+        <li><span class="ck">✓</span> Up to 3 PDFs / day</li>
+        <li><span class="ck">✓</span> Keyword search</li>
+        <li><span class="ck">✓</span> 5 pattern types</li>
+        <li><span class="ck">✓</span> PDF download</li>
+        <li><span class="ds">–</span> Batch processing</li>
+        <li><span class="ds">–</span> Custom patterns</li>
+      </ul>
+      <a href="#" class="btn-price" onclick="openApp(event)">Get started free</a>
+    </div>
+    <div class="price-card featured">
+      <div class="price-tier">Starter Plus</div>
+      <div class="price-amount"><sup>$</sup>20</div>
+      <div class="price-period">per month</div>
+      <div class="price-divider"></div>
+      <ul class="price-feats">
+        <li><span class="ck">✓</span> Up to 20 PDFs at a time</li>
+        <li><span class="ck">✓</span> All 7 pattern types</li>
+        <li><span class="ck">✓</span> Keyword search</li>
+        <li><span class="ck">✓</span> Batch processing</li>
+        <li><span class="ck">✓</span> PDF download</li>
+        <li><span class="ds">–</span> Custom pattern builder</li>
+      </ul>
+      <a href="#" class="btn-price" onclick="openApp(event)">Get Starter Plus</a>
+    </div>
+      <div class="price-tier">Enterprise</div>
+      <div class="price-amount"><sup>$</sup>150</div>
+      <div class="price-period">per month, unlimited</div>
+      <div class="price-divider"></div>
+      <ul class="price-feats">
+        <li><span class="ck">✓</span> Everything in Pro</li>
+        <li><span class="ck">✓</span> Unlimited batch size</li>
+        <li><span class="ck">✓</span> REST API access</li>
+        <li><span class="ck">✓</span> 10 team seats</li>
+        <li><span class="ck">✓</span> Audit logs</li>
+        <li><span class="ck">✓</span> Dedicated support</li>
+      </ul>
+      <a href="mailto:hello@redactly.io" class="btn-price">Contact sales</a>
+    </div>
+  </div>
+</section>
+
+<!-- APP -->
+<section id="app-section">
+  <div class="app-topbar">
+    <div class="app-topbar-left"><h2>Redact your PDFs</h2><p>// Upload · configure · preview · download</p></div>
+    <button class="btn-back" onclick="closeApp()">← Back to site</button>
+  </div>
+  <div class="app-grid">
+    <aside class="sidebar">
+      <div class="panel">
+        <div class="panel-label">PDF Files</div>
+        <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+          <div class="dz-icon">📄</div>
+          <p><strong>Click or drag</strong> PDFs here<br/>Multiple files supported</p>
+        </div>
+        <input type="file" id="file-input" accept=".pdf" multiple onchange="handleFileInput(event)"/>
+        <div class="file-list" id="file-list"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-label">Keywords</div>
+        <textarea class="kw-input" id="kw-input" placeholder="John Smith, Confidential, Project X&#10;Separate with commas"></textarea>
+        <div class="hint">// comma-separated terms</div>
+      </div>
+      <div class="panel">
+        <div class="panel-label">Auto-Detect Patterns</div>
+        <div class="pill-wrap">
+          <div class="pill" data-p="SSN" onclick="togPill(this)">SSN</div>
+          <div class="pill" data-p="Phone" onclick="togPill(this)">Phone</div>
+          <div class="pill" data-p="Email" onclick="togPill(this)">Email</div>
+          <div class="pill" data-p="Credit Card" onclick="togPill(this)">CC</div>
+          <div class="pill" data-p="Date of Birth" onclick="togPill(this)">DOB</div>
+          <div class="pill" data-p="IP Address" onclick="togPill(this)">IP</div>
+          <div class="pill" data-p="ZIP Code" onclick="togPill(this)">ZIP</div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-label">Options</div>
+        <div class="opt-row"><span class="opt-lbl">Case sensitive</span><button class="tog" id="tog-case" onclick="this.classList.toggle('on')"></button></div>
+        <div class="opt-row"><span class="opt-lbl">Whole word only</span><button class="tog" id="tog-word" onclick="this.classList.toggle('on')"></button></div>
+      </div>
+      <button class="scan-btn" id="scan-btn" onclick="runScan()" disabled>Scan for matches →</button>
+    </aside>
+    <main class="main-pane" id="main-pane">
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon">⬛</div>
+        <h3>Ready to redact</h3>
+        <p>Upload PDFs and set your rules,<br/>then hit Scan for Matches.</p>
+      </div>
+      <div id="results" style="display:none"></div>
+    </main>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-brand"><div class="logo">Redactly</div><p>Permanent PDF redaction for legal, healthcare, finance, and compliance teams.</p></div>
+  <div class="footer-col"><h4>Product</h4><a href="#features">Features</a><a href="#pricing">Pricing</a><a href="#" onclick="openApp(event)">App</a><a href="#">API Docs</a></div>
+  <div class="footer-col"><h4>Company</h4><a href="#">Privacy Policy</a><a href="#">Terms of Service</a><a href="mailto:hello@redactly.io">Contact</a><a href="#">Security</a></div>
+</footer>
+<div class="footer-bottom"><span>© 2026 Redactly. All PDF processing is done locally in your browser.</span><span>hello@redactly.io</span></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// CURSOR
+const cur=document.getElementById('cursor'),ring=document.getElementById('cursor-ring');
+let mx=0,my=0,rx=0,ry=0;
+document.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;cur.style.left=mx-4+'px';cur.style.top=my-4+'px';});
+(function animRing(){rx+=(mx-rx)*.15;ry+=(my-ry)*.15;ring.style.left=rx-16+'px';ring.style.top=ry-16+'px';requestAnimationFrame(animRing);})();
+document.querySelectorAll('a,button,.pill,.drop-zone').forEach(el=>{
+  el.addEventListener('mouseenter',()=>{cur.style.transform='scale(2)';ring.style.transform='scale(1.5)';});
+  el.addEventListener('mouseleave',()=>{cur.style.transform='scale(1)';ring.style.transform='scale(1)';});
+});
+
+// STATE
+const S={files:[],texts:{},patterns:new Set(),matches:[],sel:new Set()};
+const PATS={
+  "SSN":{re:/\b\d{3}-\d{2}-\d{4}\b/g,color:'#ff3b5c'},
+  "Phone":{re:/\b(\+1[\s.-]?)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/g,color:'#ff6b35'},
+  "Email":{re:/\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/g,color:'#d4ac0d'},
+  "Credit Card":{re:/\b(?:\d{4}[\s-]?){3}\d{4}\b/g,color:'#8b5cf6'},
+  "Date of Birth":{re:/\b(0?[1-9]|1[0-2])[\/\-](0?[1-9]|[12]\d|3[01])[\/\-](\d{2,4})\b/g,color:'#4d9fff'},
+  "IP Address":{re:/\b(?:\d{1,3}\.){3}\d{1,3}\b/g,color:'#00d68f'},
+  "ZIP Code":{re:/\b\d{5}(?:-\d{4})?\b/g,color:'#ff3b5c'},
+};
+
+function openApp(e){if(e)e.preventDefault();document.getElementById('app-section').classList.add('visible');setTimeout(()=>document.getElementById('app-section').scrollIntoView({behavior:'smooth'}),50);}
+function closeApp(){document.getElementById('app-section').classList.remove('visible');window.scrollTo({top:0,behavior:'smooth'});}
+
+function handleDragOver(e){e.preventDefault();document.getElementById('drop-zone').classList.add('active');}
+function handleDragLeave(){document.getElementById('drop-zone').classList.remove('active');}
+function handleDrop(e){e.preventDefault();document.getElementById('drop-zone').classList.remove('active');addFiles([...e.dataTransfer.files].filter(f=>f.type==='application/pdf'));}
+function handleFileInput(e){addFiles([...e.target.files]);}
+
+async function addFiles(files){
+  const novel=files.filter(f=>!S.files.find(x=>x.name===f.name));
+  if(!novel.length)return;
+  S.files.push(...novel);
+  renderFiles();
+  document.getElementById('scan-btn').disabled=false;
+  toast(`Loading ${novel.length} file${novel.length>1?'s':''}…`);
+  for(const f of novel){
+    try{S.texts[f.name]=await extractText(f);}
+    catch{S.texts[f.name]={pages:[{page:1,text:''}],numPages:1};}
+  }
+  toast(`✓ ${novel.length} file${novel.length>1?'s':''} ready`,'success');
+}
+function removeFile(name){S.files=S.files.filter(f=>f.name!==name);delete S.texts[name];renderFiles();if(!S.files.length)document.getElementById('scan-btn').disabled=true;}
+function renderFiles(){document.getElementById('file-list').innerHTML=S.files.map(f=>`<div class="file-item"><span class="file-name" title="${esc(f.name)}">📄 ${esc(f.name)}</span><span class="file-rm" onclick="removeFile('${f.name.replace(/'/g,"\\'")}')">✕</span></div>`).join('');}
+
+async function loadPdfJs(){
+  if(window.pdfjsLib)return;
+  await new Promise(res=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';s.onload=res;document.head.appendChild(s);});
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+async function extractText(file){
+  await loadPdfJs();
+  const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+  const pages=[];
+  for(let i=1;i<=pdf.numPages;i++){const pg=await pdf.getPage(i);const ct=await pg.getTextContent();pages.push({page:i,text:ct.items.map(x=>x.str).join(' ')});}
+  return{pages,numPages:pdf.numPages};
+}
+
+function togPill(el){const p=el.dataset.p;if(S.patterns.has(p)){S.patterns.delete(p);el.classList.remove('on');}else{S.patterns.add(p);el.classList.add('on');}}
+
+function runScan(){
+  const kws=document.getElementById('kw-input').value;
+  const cs=document.getElementById('tog-case').classList.contains('on');
+  const ww=document.getElementById('tog-word').classList.contains('on');
+  S.matches=[];
+  for(const file of S.files){
+    const data=S.texts[file.name];if(!data)continue;
+    for(const{page,text}of data.pages){
+      if(kws.trim()){kws.split(',').forEach(kw=>{const t=kw.trim();if(!t)return;let p=t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');if(ww)p=`\\b${p}\\b`;const re=new RegExp(p,cs?'g':'gi');let m;while((m=re.exec(text))!==null)S.matches.push({id:S.matches.length,file:file.name,text:m[0],page,type:'Keyword',color:'#ff3b5c',idx:m.index});});}
+      S.patterns.forEach(pn=>{const{re:base,color}=PATS[pn];const re=new RegExp(base.source,base.flags);let m;while((m=re.exec(text))!==null)S.matches.push({id:S.matches.length,file:file.name,text:m[0],page,type:pn,color,idx:m.index});});
+    }
+  }
+  S.sel=new Set(S.matches.map(m=>m.id));
+  renderResults();
+}
+
+function renderResults(){
+  document.getElementById('empty-state').style.display='none';
+  const r=document.getElementById('results');r.style.display='block';
+  if(!S.matches.length){r.innerHTML=`<div class="empty-state" style="min-height:300px"><div class="empty-icon" style="opacity:.3">🔍</div><h3>No matches found</h3><p>Try different keywords or enable more patterns.</p></div>`;return;}
+  r.innerHTML=`
+    <div class="results-bar"><h3 class="results-h">${S.matches.length} match${S.matches.length!==1?'es':''} found</h3><span class="count-badge" id="count-badge">${S.sel.size} selected</span></div>
+    <div class="sel-row"><button class="sel-btn" onclick="selAll(true)">Select all</button><button class="sel-btn" onclick="selAll(false)">Deselect all</button></div>
+    <div class="match-list">${S.matches.map(m=>`
+      <div class="match-row">
+        <div class="match-cb ${S.sel.has(m.id)?'on':''}" id="cb-${m.id}" onclick="togMatch(${m.id})">${S.sel.has(m.id)?'✓':''}</div>
+        <span class="m-badge" style="background:${m.color}22;color:${m.color}">${m.type}</span>
+        <span class="m-text">${esc(m.text)}</span>
+        <span class="m-page">${m.file.length>18?m.file.slice(0,16)+'…':m.file} p.${m.page}</span>
+      </div>`).join('')}</div>
+    <div class="dl-bar"><div class="dl-info"><h3>Apply & Download</h3><p id="dl-desc">${S.sel.size} items · ${S.files.length} file${S.files.length!==1?'s':''}</p></div><button class="dl-btn" onclick="applyRedactions()">⬇ Download Redacted PDF${S.files.length>1?'s':''}</button></div>`;
+}
+
+function togMatch(id){S.sel.has(id)?S.sel.delete(id):S.sel.add(id);const cb=document.getElementById(`cb-${id}`);cb.classList.toggle('on',S.sel.has(id));cb.textContent=S.sel.has(id)?'✓':'';const b=document.getElementById('count-badge');if(b)b.textContent=`${S.sel.size} selected`;const d=document.getElementById('dl-desc');if(d)d.textContent=`${S.sel.size} items · ${S.files.length} file${S.files.length!==1?'s':''}`;}
+function selAll(v){S.sel=v?new Set(S.matches.map(m=>m.id)):new Set();renderResults();}
+
+async function applyRedactions(){
+  if(!S.sel.size){toast('No matches selected','error');return;}
+  toast('Applying redactions…');
+  if(!window.PDFLib){await new Promise(res=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';s.onload=res;document.head.appendChild(s);});}
+  const{PDFDocument,rgb,StandardFonts}=PDFLib;
+  const selM=S.matches.filter(m=>S.sel.has(m.id));
+  for(const file of S.files){
+    const fm=selM.filter(m=>m.file===file.name);if(!fm.length)continue;
+    const data=S.texts[file.name];
+    const doc=await PDFDocument.create();
+    const font=await doc.embedFont(StandardFonts.Helvetica);
+    const bold=await doc.embedFont(StandardFonts.HelveticaBold);
+    for(const{page:pn,text:raw}of data.pages){
+      let text=raw;
+      fm.filter(m=>m.page===pn).sort((a,b)=>b.idx-a.idx).forEach(m=>{const re=new RegExp(m.text.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi');text=text.replace(re,'█'.repeat(m.text.length));});
+      const pg=doc.addPage([612,792]);const{width,height}=pg.getSize();
+      pg.drawRectangle({x:0,y:height-32,width,height:32,color:rgb(0.95,0.23,0.36)});
+      pg.drawText(`REDACTED  ·  Page ${pn} of ${data.numPages}  ·  ${file.name}`,{x:16,y:height-21,size:8,font:bold,color:rgb(1,1,1)});
+      const words=text.split(/\s+/),lines=[];let c='';
+      for(const w of words){const t=c?c+' '+w:w;if(t.length>92){if(c)lines.push(c);c=w;}else c=t;}if(c)lines.push(c);
+      const startY=height-52,lh=11.5,maxL=Math.floor((height-70)/lh);
+      lines.slice(0,maxL).forEach((line,i)=>{const y=startY-i*lh;if(line.includes('█')){pg.drawRectangle({x:34,y:y-2,width:Math.min(line.length*5.1,width-50),height:lh,color:rgb(.08,.09,.12)});}else{try{pg.drawText(line,{x:36,y,size:7.5,font,color:rgb(.15,.16,.18),maxWidth:width-70});}catch{}}});
+      pg.drawLine({start:{x:0,y:22},end:{x:width,y:22},thickness:.5,color:rgb(.25,.26,.3)});
+      pg.drawText('Processed by Redactly · redactly.io',{x:36,y:9,size:6.5,font,color:rgb(.4,.42,.48)});
+    }
+    const bytes=await doc.save();dlFile(bytes,file.name.replace('.pdf','_REDACTED.pdf'));
+    await new Promise(r=>setTimeout(r,200));
+  }
+  toast(`✓ ${S.files.length} file${S.files.length>1?'s':''} redacted & downloaded!`,'success');
+}
+
+function dlFile(bytes,name){const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));const a=Object.assign(document.createElement('a'),{href:url,download:name});a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+let tt;function toast(msg,type=''){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show'+(type?' '+type:'');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),3200);}
+</script>
+</body>
+</html>
